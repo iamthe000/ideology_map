@@ -62,6 +62,7 @@
             background: #fff; border-radius: 24px 24px 0 0; padding: 25px; 
             box-sizing: border-box; transition: 0.3s cubic-bezier(0.1, 0.8, 0.2, 1); 
             z-index: 101; max-height: 85vh; overflow-y: auto; 
+            overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
         }
         #modal.active { bottom: 0; }
         #modal-overlay.active { opacity: 1; visibility: visible; }
@@ -341,6 +342,7 @@
             initialPosY = posY;
         }
         function dragMove(e) {
+            if (e.target.closest('#modal') || e.target.closest('#zoom-controls')) return;
             if (e.type === 'touchmove') e.preventDefault(); 
             if (e.type === 'touchmove' && e.touches.length === 2 && initialPinchDistance) {
                 const currentDistance = Math.hypot(
