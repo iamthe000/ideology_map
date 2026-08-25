@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>政治思想マップ</title>
+    <style>
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            overflow: hidden; background-color: #f8f9fa; font-family: 'Helvetica Neue', Arial, sans-serif; 
+        }
+        #map-container { 
+            width: 100%; height: 100%; position: relative; touch-action: none; 
+        }
+        #map { 
+            width: 1000px; height: 1000px; background-color: white; 
+            position: absolute; transform-origin: 0 0; 
+            border: 12px solid #000; box-sizing: border-box;
+        }
+        .axis-x { position: absolute; top: 50%; left: 0; width: 100%; height: 8px; background: #000; transform: translateY(-50%); }
+        .axis-y { position: absolute; top: 0; left: 50%; width: 8px; height: 100%; background: #000; transform: translateX(-50%); }
+        .axis-label { position: absolute; font-weight: 900; font-size: 36px; white-space: nowrap; color: #000; pointer-events: none; }
+        .label-top { top: -60px; left: 50%; transform: translateX(-50%); }
+        .label-bottom { bottom: -60px; left: 50%; transform: translateX(-50%); }
+        .label-left { top: 50%; left: -60px; transform: translateY(-50%); writing-mode: vertical-rl; }
+        .label-right { top: 50%; right: -60px; transform: translateY(-50%); writing-mode: vertical-rl; }
+        .point { 
+            position: absolute; width: 26px; height: 26px; background-color: red; 
+            border-radius: 50%; transform: translate(-50%, -50%); 
+            cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.4); z-index: 10; 
+            transition: transform 0.15s ease, background-color 0.15s ease;
+        }
+        .point:hover { transform: translate(-50%, -50%) scale(1.25); background-color: #d32f2f; }
+        .point:active { transform: translate(-50%, -50%) scale(1.35); }
+        .point-label { 
+            position: absolute; font-weight: 900; font-size: 26px; 
+            white-space: nowrap; color: #000; 
+            background: rgb(255 255 255 / 20%);
+            padding: 3px 8px; border-radius: 6px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+            pointer-events: auto; cursor: pointer; user-select: none;
+            transition: color 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
+            z-index: 11;
+        }
+        .point-label:hover {
+            color: #d32f2f;
+            background: rgba(255, 255, 255, 0.98);
+            transform: scale(1.05);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+        }
+        .point-label:active {
+            transform: scale(0.98);
+        }
+        #modal-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.6); opacity: 0; visibility: hidden; 
+            transition: 0.3s; z-index: 100; 
+        }
+        #modal { 
+            position: fixed; bottom: -100%; left: 0; width: 100%; 
+            background: #fff; border-radius: 24px 24px 0 0; padding: 25px; 
+            box-sizing: border-box; transition: 0.3s cubic-bezier(0.1, 0.8, 0.2, 1); 
+            z-index: 101; max-height: 85vh; overflow-y: auto; 
+        }
+        #modal.active { bottom: 0; }
+        #modal-overlay.active { opacity: 1; visibility: visible; }
+        #modal-title { font-size: 1.8em; margin: 0 0 10px 0; font-weight: 900; border-bottom: 3px solid #333; padding-bottom: 10px;}
+        #modal-desc { 
+            font-size: 1.05em; margin-bottom: 25px; line-height: 1.8; color: #333; 
+            white-space: pre-wrap; word-break: break-word;
+        }
+        .link-btn { 
+            display: block; width: 100%; padding: 16px; margin-bottom: 12px; 
+            background: #007aff; color: white; text-align: center; 
+            text-decoration: none; border-radius: 12px; font-weight: bold; font-size: 1.1em; box-sizing: border-box;
+        }
+        .link-btn:active { background: #0056b3; }
+        .close-btn { 
+            display: block; width: 100%; padding: 16px; background: #e9ecef; 
+            color: #333; text-align: center; border-radius: 12px; font-weight: bold; 
+            margin-top: 20px; cursor: pointer; box-sizing: border-box;
+        }
+        #zoom-controls { position: fixed; right: 20px; bottom: 30px; z-index: 50; display: flex; flex-direction: column; gap: 15px; }
+        .zoom-btn { 
+            width: 50px; height: 50px; background: white; border: none; border-radius: 50%; 
+            font-size: 24px; font-weight: bold; display: flex; align-items: center; justify-content: center; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2); cursor: pointer; user-select: none; color: #333;
+        }
+        .zoom-btn:active { background: #e0e0e0; }
+    </style>
+</head>
+<body>
+    <div id="map-container">
+        <div id="map">
+            <div class="axis-x"></div>
+            <div class="axis-y"></div>
+            <div class="axis-label label-top">自由市場 規制緩和</div>
+            <div class="axis-label label-bottom">国家介入 政府主導</div>
+            <div class="axis-label label-left">政治的左翼（厳密な定義）</div>
+            <div class="axis-label label-right">政治的右翼</div>
+        </div>
+    </div>
+
+    <div id="zoom-controls">
+        <div class="zoom-btn" onclick="zoomIn()">＋</div>
+        <div class="zoom-btn" onclick="zoomOut()">－</div>
+    </div>
+
+    <div id="modal-overlay"></div>
+    <div id="modal">
+        <h2 id="modal-title"></h2>
+        <div id="modal-desc"></div>
+        <div id="modal-links"></div>
+        <div class="close-btn" onclick="closeModal()">閉じる</div>
+    </div>
+
+    <script>
+        const ideologies = [
+            {
+                id: 'neoliberalism', name: 'ネオリベラリズム', x: 65, y: 8,
+                labelOffset: { x: 20, y: -20 },
+                desc: '新自由主義とも呼ばれ、市場における自由な競争と自己責任原則を重視し、政府による規制や介入を最小限に抑制することを志向する政治・経済思想。国営企業の民営化や規制緩和、貿易の自由化を推進して「小さな政府」による成長を目指す。1970年代のスタグフレーションへの処方箋として急速に普及し、イギリスのサッチャー政権やアメリカのレーガン政権の政策基盤を形成した。代表的な論者にフリードリヒ・ハイエクやミルトン・フリードマンがいる。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/新自由主義' }]
+            },
+            {
+                id: 'libertarianism', name: 'リバタリアニズム', x: 50, y: 15,
+                labelOffset: { x: -280, y: -20 },
+                desc: '完全自由主義や自由至上主義と訳され、他者の基本的人権を侵害しない限り、個人の身体・思想・経済活動に対する国家の強制的制約を全面的に排除する立場をとる思想。自分自身の身体と財産に対する絶対的な自己所有権を根底に置き、ボランタリーな自由契約と取引を重んじる。課税や徴兵といった国家権力による強制に対して強い懸念を提示する。ジョン・ロックの権利論を源流とし、現代ではロバート・ノージックらにより体系化された。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/リバタリアニズム' }]
+            },
+            {
+                id: 'anarcho-capitalism', name: 'アナルコ・キャピタリズム', x: 75, y: 5,
+                labelOffset: { x: 20, y: -20 },
+                desc: '無政府資本主義と称され、国家概念そのものを完全に撤廃し、警察、司法、国防に至る社会的インフラを含めたすべてのサービスを私有財産権に基づく完全自由市場に委ねる思想。税金や法的独占の排除を主張し、個人間や民間事業者間の任意契約による法執行と紛争解決を目指す。リバタリアニズムの最も尖鋭化した形態であり、マレー・ロスバードらが中心となって論理展開を行った。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/無政府資本主義' }]
+            },
+            {
+                id: 'conservatism', name: '自由主義的保守', x: 68, y: 40,
+                labelOffset: { x: 20, y: -20 },
+                desc: '自由主義的な市場経済の利点を活かしつつも、伝統的な家族観や道徳倫理、歴史的慣習といった社会秩序の継続性を尊重する思想。急進的かつ全般的な社会改変を回避し、漸進的で試行錯誤的な変化を好む傾向がある。個人の自由や私的所有権を評価しながらも、過度な個人主義による秩序崩壊を警戒し、コミュニティの団結と法と秩序を重視する。エドマンド・バークの保守思想を系譜に持つ。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/自由主義的保守' }]
+            },
+            {
+                id: 'neoconservatism', name: 'ネオコン（新保守主義）', x: 82, y: 48,
+                labelOffset: { x: 20, y: -20 },
+                desc: '自由民主主義や人権などの価値規範を普遍的価値と位置づけ、これを国際秩序の確立に向けて積極的に広めるため、強力な軍事力行使やタカ派外交姿勢を辞さないアメリカの政治思想潮流。軍備の増強や単独行動主義を恐れず、明確な正義観に基づき国際社会へ介入する。アーヴィング・クリストルらに始まり、ジョージ・W・ブッシュ政権下の外交政策において中心的な影響を及ぼした。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/新保守主義' }]
+            },
+            {
+                id: 'liberalism', name: 'リベラル（自由主義）', x: 45, y: 55,
+                labelOffset: { x: -160, y: -30 },
+                desc: '個人の尊厳、基本的人権、自由な意思表明や思想の多様性を重視すると同時に、市場のふじょうどうや過度な格差に対して政府による一定の調整を許容する思想。言論や表現の自由、少数者の権利保護を重んじ、格差の是正や教育・セーフティネット整備における政府の積極的役割を肯定する。平和主義や国際協調を尊重し、現代ではジョン・ロールズの正義論（機会の公平と弱者保護）を思想的基盤とする。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/自由主義' }]
+            },
+{
+                id: 'techno', name: 'テクノクラシー', x: 45, y: 75,
+                labelOffset: { x: -160, y: -10 },
+                desc: '科学技術や経済運営、社会政策などの高度な技術的専門知識によって、政策立案に参画し、最終的に政治経済を支配し管理することを目指す。専門的な力に基づいて権力者を選ぶという面で能力主義的側面があるが、エリート主義の1種という側面もある。一般に科学主義を重視するため、それが行き過ぎると国民の利益を軽視し最終的に国家が破綻する可能性を指摘する者もいる、が主には国民や国家へ貢献する科学技術をもとに行動する。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/自由主義' }]
+            },
+            {
+                id: 'social-liberalism', name: '社会自由主義', x: 38, y: 42,
+                labelOffset: { x: -180, y: -20 },
+                desc: '古典的な自由主義が掲げる法的・形式的自由に留まらず、貧困や病気、教育の不平等といった実質的な不自由を克服するために福祉国家の形成を目指す思想。市場原理を認めつつも、公的介入を通じて格差を緩和し、すべての市民に公正な機会を保障する混合経済体制を支持する。19世紀末から20世紀初頭にかけてトーマス・ヒル・グリーンらによって提唱された。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/社会自由主義' }]
+            },
+            {
+                id: 'centrism', name: '中道主義・第三の道', x: 50, y: 50,
+                labelOffset: { x: 20, y: -20 },
+                desc: '従来の左右対立や極端な市場原理主義と過剰な福祉国家論の双方を乗り越え、実用主義的な姿勢で双方の利点を調和させようとする立場。経済的活力の追求と社会的公正・格差是正のバランスを模索し、権利だけでなく個人の社会的責任も強調する。イデオロギー的教条主義を避け、柔軟な政策形成を目指す。アンソニー・ギデンズの「第三の道」論が知られ、トニー・ブレアなどの政権運営に大きな影響を与えた。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/第三の道' }]
+            },
+            {
+                id: 'christian-democracy', name: 'キリスト教民主主義', x: 60, y: 58,
+                labelOffset: { x: 20, y: -20 },
+                desc: 'キリスト教倫理に基づく人間の尊厳と社会的連帯の理念を基調とし、保守的な家族観と社会市場経済を融合させるヨーロッパの政治思想。個人や身近なコミュニティで解決できる問題には国家が過剰介入しないとする「補助性原理」を提唱し、社会保障と資本主義の健全な調和を図る。戦後のヨーロッパ復興や欧州統合の推進において中心的役割を果たした。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/キリスト教民主主義' }]
+            },
+            {
+                id: 'communitarianism', name: '共同体主義（コミュニタリアニズム）', x: 55, y: 70,
+                labelOffset: { x: 20, y: -20 },
+                desc: '個人の権利を絶対化する原子論的なリベラリズムを批判し、人間は地域社会や歴史的・文化的共同体の中でのみ自己のアイデンティティを形成できると捉える思想。孤立した個人の自由よりもコミュニティへの参加や社会的絆、責任や規範の再評価を主張する。「共通の善」の実現と市民的道徳の回復を目指す立場であり、マイケル・サンデルやチャールズ・テイラーらが主要な議論を展開している。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/共同体主義' }]
+            },
+            {
+                id: 'green-politics', name: '緑の政治(環境主義)', x: 28, y: 35,
+                labelOffset: { x: -240, y: -20 },
+                desc: '地球環境の保全と持続可能性を最優先課題に掲げ、草の根民主主義、非暴力・平和主義、社会的公正を重視する思想。過度な経済成長至上主義を批判し、脱炭素社会の形成や環境負荷の少ない社会構造への転換を要求する。意思決定の分散化やジェンダー平等、多様性の尊重を推進する。1970年代の環境・平和運動から派生し、各国の環境政党の理念を形成している。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/緑の政治' }]
+            },
+            {
+                id: 'keynesianism', name: 'ケインズ主義・福祉資本主義', x: 35, y: 65,
+                labelOffset: { x: -280, y: -20 },
+                desc: '市場機構だけに依存すると不況や失業（市場の失敗）が発生するため、政府が財政支出や金融調節を通じて有効需要を創出し、景気変動を緩和すべきだとする経済思想。公共投資や租税調整、社会保障制度を通じて所得再分配を行い、完全雇用と市民生活の安定を図る。ジョン・メイナード・ケインズが大恐慌期に提示し、第二次世界大戦後の高度経済成長期における各国の主要政策基盤となった。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/ケインズ経済学' }]
+            },
+            {
+                id: 'nationalism', name: '民族主義（ナショナリズム）', x: 82, y: 68,
+                labelOffset: { x: 20, y: -20 },
+                desc: '共通の言語、歴史、文化、あるいは国民的アイデンティティを共有する集団の一体性と独立・発展を最優先の価値とみなす思想。主権国家の自主性と国益の保護を訴え、対外的な干渉に対する抵抗や自国文化の称揚を行う。自国の産業や労働者を優先する保護主義政策や国境管理の徹底を好む傾向を示す。近代国民国家の形成過程で不可欠な役割を果たしてきた。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/ナショナリズム' }]
+            },
+            {
+                id: 'social-democracy', name: '社会民主主義', x: 28, y: 80,
+                labelOffset: { x: -90, y: -20 },
+                desc: '暴力的な革命を拒否し、立憲民主主義と議会手続きを通じて、資本主義制度の範囲内で福祉の充実や労働権の保護による公正な不平等緩和を目指す立場。国民全員を対象とする包括的な社会保障制度や累進課税政策を導入し、自由と平等の両立を図る。エドゥアルト・ベルンシュタインらの修正主義を原点とし、北欧諸国の高福祉・高負担モデルの構築に大きく寄与した。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/社会民主主義' }]
+            },
+            {
+                id: 'socialism', name: '社会主義', x: 12, y: 85,
+                labelOffset: { x: 20, y: -20 },
+                desc: '土地や生産設備といった生産手段の私有を制限または是正し、社会的共有・管理のもとで社会全体の平等と公正を達成しようとする思想。資本主義下での搾取や経済的不平等を克服するため、計画的な生産や不当な利潤追求の抑制を目指す。産業革命期の経済的格差問題から発展し、カール・マルクスやフリードリヒ・エンゲルスによって体系的な社会理論へと整えられた。',
+                links: [
+                    { title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/社会主義' },
+                    { title: '資本論をオンラインで読む', url: 'https://www.marxists.org/nihon/marx-engels/capital/chapter01/index.htm' }
+                ]
+            },
+            {
+                id: 'communism', name: '共産主義', x: 2, y: 95,
+                labelOffset: { x: 20, y: -30 },
+                desc: '社会主義思想の到達点として、私有財産、階級対立、さらには国家や通貨そのものの解消を目指す思想。すべての生産手段を共同社会で管理し、各人がその能力に応じて働き、必要に応じて分配を受ける理想社会を提示する。革命による権力奪取と前衛党の主導を認めるマルクス・レーニン主義の文脈において、ソ連をはじめとする社会主義体制の精神的理念となった。',
+                links: [
+                    { title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/共産主義' },
+                    { title: '資本論をオンラインで読む', url: 'https://www.marxists.org/nihon/marx-engels/capital/chapter01/index.htm' }
+		]
+            },
+            {
+                id: 'anarchism', name: 'アナーキズム（無政府主義）', x: 10, y: 10,
+                labelOffset: { x: 20, y: -20 },
+                desc: '国家権力、法制度、警察、資本主義、宗教的権威など、あらゆる強制力と階層的支配構造の撤廃を主張する思想。個人の絶対的自由と自発的な連帯・相互扶助（ミュチュアリズム）に基づき、国家に依存しない自由な連合体や自治集落による社会運営を構想する。プルードン、バクーニン、クロポトキンらが代表的理論家として知られる。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/アナキズム' }]
+            },
+            {
+                id: 'ultranationalism', name: '国粋主義（超国家主義）', x: 90, y: 85,
+                labelOffset: { x: -160, y: -20 },
+                desc: '自国の文化、伝統、民族的特質を絶対化し、他国の文化や外国人の排斥を辞さない不寛容で先鋭化したナショナリズムの形態。自国の権威高揚と領土的・政治的拡張を最優先し、国内における批判的意見や異論の封殺を支持する。近代の軍国主義や帝国主義の伸長期において、思想的背景として多大な影響を与えた。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/国粋主義' }]
+            },
+            {
+                id: 'fascism', name: 'ファシズム', x: 92, y: 92,
+                labelOffset: { x: -150, y: -20 },
+                desc: '強力な独裁指導者と単一政党による国家統制のもと、個人の自由や民主主義を全面的に否定し、軍国主義と集団の絶対的一体化を推進する極右政治理念。強烈なナショナリズムや排外主義を煽り立て、暴力と洗脳を用いて国民全体を国家目的に動員する。第一次世界大戦後のイタリアでムッソリーニが創始し、ナチス・ドイツなどの体制へ展開した。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/ファシズム' }]
+            },
+            {
+                id: 'totalitarianism', name: '全体主義', x: 98, y: 98,
+                labelOffset: { x: -160, y: -40 },
+                desc: '国家権力が市民生活、思想、経済、文化などのすべての領域に徹底的に介在し、全社会を単一のイデオロギーによって完全支配する体制。一党独裁、警察国家機構による厳重な監視と恐怖政治、言論・メディアの独占と統制を通じて一切の反対勢力を排除する。ナチス・ドイツやスターリン体制下のソ連がその典型であり、ハンナ・アーレントらによりその危険性が分析された。',
+                links: [{ title: 'Wikipediaを読む', url: 'https://ja.wikipedia.org/wiki/全体主義' }]
+            }
+        ];
+        const mapEl = document.getElementById('map');
+        ideologies.forEach(item => {
+            const point = document.createElement('div');
+            point.className = 'point';
+            point.style.left = item.x + '%';
+            point.style.top = item.y + '%';
+            point.onclick = (e) => {
+                e.stopPropagation();
+                openModal(item);
+            };
+            const label = document.createElement('div');
+            label.className = 'point-label';
+            label.innerText = item.name;
+            label.style.left = `calc(${item.x}% + ${item.labelOffset.x}px)`;
+            label.style.top = `calc(${item.y}% + ${item.labelOffset.y}px)`;
+            label.onclick = (e) => {
+                e.stopPropagation();
+                openModal(item);
+            };
+            mapEl.appendChild(point);
+            mapEl.appendChild(label);
+        });
+        const container = document.getElementById('map-container');
+        let scale = 1;
+        let posX = 0, posY = 0;
+        const initMapScale = () => {
+            const screenW = window.innerWidth;
+            const screenH = window.innerHeight;
+            scale = Math.min(screenW / 1200, screenH / 1200); 
+            posX = (screenW - 1000 * scale) / 2;
+            posY = (screenH - 1000 * scale) / 2;
+            applyTransform();
+        };
+        window.addEventListener('resize', initMapScale);
+        function applyTransform() {
+            mapEl.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+        }
+        function zoomAtCenter(factor) {
+            const screenCenterX = window.innerWidth / 2;
+            const screenCenterY = window.innerHeight / 2;
+            posX = screenCenterX - (screenCenterX - posX) * factor;
+            posY = screenCenterY - (screenCenterY - posY) * factor;
+            scale *= factor;
+            applyTransform();
+        }
+        function zoomIn() { zoomAtCenter(1.3); }
+        function zoomOut() { zoomAtCenter(1 / 1.3); }
+        let isDragging = false;
+        let startX, startY, initialPosX, initialPosY;
+        let initialPinchDistance = null;
+        let initialScale = 1;
+        container.addEventListener('mousedown', dragStart);
+        container.addEventListener('touchstart', dragStart, {passive: false});
+        window.addEventListener('mousemove', dragMove);
+        window.addEventListener('touchmove', dragMove, {passive: false});
+        window.addEventListener('mouseup', dragEnd);
+        window.addEventListener('touchend', dragEnd);
+        function dragStart(e) {
+            if (e.target.closest('.point') || e.target.closest('.point-label') || e.target.closest('#zoom-controls') || e.target.closest('#modal')) return;
+            if (e.type === 'touchstart') {
+                if (e.touches.length === 2) {
+                    initialPinchDistance = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                    initialScale = scale;
+                    return;
+                }
+                startX = e.touches[0].pageX;
+                startY = e.touches[0].pageY;
+            } else {
+                startX = e.pageX;
+                startY = e.pageY;
+            }
+            isDragging = true;
+            initialPosX = posX;
+            initialPosY = posY;
+        }
+        function dragMove(e) {
+            if (e.type === 'touchmove') e.preventDefault(); 
+            if (e.type === 'touchmove' && e.touches.length === 2 && initialPinchDistance) {
+                const currentDistance = Math.hypot(
+                    e.touches[0].pageX - e.touches[1].pageX,
+                    e.touches[0].pageY - e.touches[1].pageY
+                );
+                const factor = (initialScale * (currentDistance / initialPinchDistance)) / scale;
+                zoomAtCenter(factor);
+                return;
+            }
+            if (!isDragging) return;
+            let currentX = e.type === 'touchmove' ? e.touches[0].pageX : e.pageX;
+            let currentY = e.type === 'touchmove' ? e.touches[0].pageY : e.pageY;
+            posX = initialPosX + (currentX - startX);
+            posY = initialPosY + (currentY - startY);
+            applyTransform();
+        }
+        function dragEnd() {
+            isDragging = false;
+            initialPinchDistance = null;
+        }
+        const modal = document.getElementById('modal');
+        const overlay = document.getElementById('modal-overlay');
+        function openModal(data) {
+            document.getElementById('modal-title').innerText = data.name;
+            document.getElementById('modal-desc').innerText = data.desc;
+            const linksContainer = document.getElementById('modal-links');
+            linksContainer.innerHTML = '';
+            if (data.links && data.links.length > 0) {
+                data.links.forEach(link => {
+                    const a = document.createElement('a');
+                    a.href = link.url;
+                    a.target = '_blank';
+                    a.className = 'link-btn';
+                    a.innerText = link.title;
+                    linksContainer.appendChild(a);
+                });
+            }
+            modal.classList.add('active');
+            overlay.classList.add('active');
+        }
+        function closeModal() {
+            modal.classList.remove('active');
+            overlay.classList.remove('active');
+        }
+        overlay.addEventListener('click', closeModal);
+        initMapScale();
+    </script>
+</body>
+</html>
